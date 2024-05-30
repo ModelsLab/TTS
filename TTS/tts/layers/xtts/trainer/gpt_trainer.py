@@ -78,7 +78,7 @@ class GPTTrainer(BaseTTS):
         # create the tokenizer with the target vocabulary
         self.xtts.tokenizer = VoiceBpeTokenizer(self.args.tokenizer_file)
         # init gpt encoder and hifigan decoder
-        self.xtts.init_models()
+        # self.xtts.init_models()
 
         if self.args.xtts_checkpoint:
             self.load_checkpoint(self.config, self.args.xtts_checkpoint, eval=False, strict=False)
