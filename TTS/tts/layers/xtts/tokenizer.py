@@ -13,11 +13,7 @@ from spacy.lang.en import English
 from spacy.lang.es import Spanish
 from spacy.lang.ja import Japanese
 from spacy.lang.zh import Chinese
-from spacy.lang.te import Telugu
-from spacy.lang.ta import Tamil
-from spacy.lang.kn import Kannada
-from spacy.lang.gu import Gujarati
-
+from spacy.lang.pt import Portuguese
 from tokenizers import Tokenizer
 
 from TTS.tts.layers.xtts.zh_num2words import TextNorm as zh_num2words
@@ -32,14 +28,8 @@ def get_spacy_lang(lang):
         return Arabic()
     elif lang == "es":
         return Spanish()
-    elif lang == "te":
-        return Telugu()
-    elif lang == "ta":
-        return Tamil()
-    elif lang == "kn":
-        return Kannada()
-    elif lang == "gu":
-        return Gujarati()
+    elif lang == "pt":
+        return Portuguese()
     else:
         # For most languages, Enlish does the job
         return English()
@@ -608,7 +598,7 @@ class VoiceBpeTokenizer:
         if vocab_file is not None:
             self.tokenizer = Tokenizer.from_file(vocab_file)
         self.char_limits = {
-            "en": 250,
+            "en": 600,
             "de": 253,
             "fr": 273,
             "es": 239,
@@ -624,10 +614,15 @@ class VoiceBpeTokenizer:
             "ja": 71,
             "hu": 224,
             "ko": 95,
-            "te": 220,
-            "ta": 350,
-            "kn": 400,
-            "gu": 200
+            "hi": 600,
+            "bn": 600, 
+            "gu": 600, 
+            "kn": 600, 
+            "ml": 600, 
+            "mr": 600, 
+            "pa": 600, 
+            "ta": 600, 
+            "te":600
         }
 
     @cached_property
@@ -653,10 +648,8 @@ class VoiceBpeTokenizer:
                 txt = korean_transliterate(txt)
         elif lang == "ja":
             txt = japanese_cleaners(txt, self.katsu)
-        elif lang == "hi":
+        elif lang in ["hi", "bn", "gu", "kn", "ml", "mr", "pa", "ta", "te"]:
             # @manmay will implement this
-            txt = basic_cleaners(txt)
-        elif lang in ["te","ta","gu","kn"]:
             txt = basic_cleaners(txt)
         else:
             raise NotImplementedError(f"Language '{lang}' is not supported.")
