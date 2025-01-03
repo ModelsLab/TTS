@@ -4,6 +4,7 @@ import xml.etree.ElementTree as ET
 from glob import glob
 from pathlib import Path
 from typing import List
+import random
 
 import pandas as pd
 from tqdm import tqdm
@@ -202,7 +203,285 @@ def ljspeech(root_path, meta_file, **kwargs):  # pylint: disable=unused-argument
             items.append({"text": text, "audio_file": wav_file, "speaker_name": speaker_name, "root_path": root_path})
     return items
 
+def modelslab(root_path, meta_file, **kwargs):  # pylint: disable=unused-argument
+    """Normalizes the LJSpeech meta data file to TTS format
+    https://keithito.com/LJ-Speech-Dataset/"""
+    txt_file = os.path.join(root_path, meta_file)
+    items = []
+    speaker_name = "ljspeech"
+    with open(txt_file, "r", encoding="utf-8") as ttf:
+        for line in ttf:
+            cols = line.split("|")
+            wav_file = os.path.join(root_path, "wavs", cols[0] + ".wav")
+            text = cols[2]
+            if len(text) > 400:
+                print(text)
+            items.append({"text": text, "audio_file": wav_file, "speaker_name": speaker_name, "root_path": root_path})
+    return items
 
+#Tetsing indic tab.
+def modelslab_indic(root_path, meta_file, **kwargs):  # pylint: disable=unused-argument
+    """Normalizes the LJSpeech meta data file to TTS format
+    https://keithito.com/LJ-Speech-Dataset/"""
+    txt_file = os.path.join(root_path, meta_file)
+    items = []
+    speaker_name = "indic"
+    count = 0
+    with open(txt_file, "r", encoding="utf-8") as ttf:
+        for line in ttf:
+            if count == 0:
+                count += 1
+                continue
+            cols = line.split("|")
+            base_name = cols[0]
+            wav_file = f"{root_path}/{base_name}.wav"  # Use f-string for faster concatenation
+            speaker_id = base_name.split("_")[0]
+            text = cols[1].strip()
+            # Construct the speaker_name only once and reuse it
+            speaker_name_full = f"{speaker_name}_{speaker_id}"
+            items.append({
+                "text": text,
+                "audio_file": wav_file,
+                "speaker_name": speaker_name_full,
+                "root_path": root_path
+            })
+            count += 1
+    print(random.choice(items))
+    return items
+
+#Tetsing indic tab.
+def extract_audio_prefix(filename):
+    if 'train_' in filename and 'male' in filename:
+        try:
+            spk = "_".join(filename.split("_")[:2])
+            return spk
+        except:
+            print(filename)
+        return None
+    if 'ASF001' in filename:
+        try:
+            spk = "-".join(filename.split("-")[:2])
+            return spk
+        except:
+            print(filename)
+        return None
+    if 'sent_' in filename:
+        pattern = r'^(.*?)(?=_sent)'
+    elif 'common_voice_en_' in filename:
+        pattern = r'^(.*?)\.wav$'
+    elif '_UTT_' in filename:
+        pattern = r'^(.*?)(?=_UTT)'
+    elif 'chunk' in filename:
+        pattern = r'^(.*?)(?=_chunk)'
+    elif filename[0] == "p" and len(filename.split("_")) == 2:
+        return filename.split("_")[0]
+    else:
+        pattern = r'^(.*?)(?:[_\.]\d+|\.original)?\.wav$'
+
+    match = re.match(pattern, filename)
+    if match:
+        return match.group(1)
+    return filename
+    
+def modelslab_oss(root_path, meta_file, **kwargs):  # pylint: disable=unused-argument
+    """Normalizes the LJSpeech meta data file to TTS format
+    https://keithito.com/LJ-Speech-Dataset/"""
+    txt_file = os.path.join(root_path, meta_file)
+    items = []
+    speaker_name = "oss"
+    unique_speakers = set()
+    filtered = 0
+    count = 0
+    non_char_regex = r'[\u3040-\u30FF\u4E00-\u9FFF\uAC00-\uD7A3\u0370-\u03FF\u0600-\u06FF\u0750-\u077F\u0400-\u04FF]'
+    pattern = re.compile(non_char_regex)
+    print(f"Loading {txt_file}")
+    with open(txt_file, "r", encoding="utf-8") as ttf:
+        for line in ttf:
+            if count == 0:
+                count += 1
+                continue
+            if pattern.search(line):
+                filtered+=1
+                continue
+            cols = line.split("|")
+            base_name = cols[0]
+            wav_file = f"{root_path}/{base_name}.wav"  # Use f-string for faster concatenation
+            speaker_id = extract_audio_prefix(base_name)
+            if speaker_id == None:
+                print(base_name)
+            text = cols[2].strip()
+            # Construct the speaker_name only once and reuse it
+            speaker_name_full=f"{speaker_name}_{speaker_id}"
+            unique_speakers.add(speaker_name_full)
+            items.append({
+                "text": text,
+                "audio_file": wav_file,
+                "speaker_name": speaker_name_full,
+                "root_path": root_path
+            })
+    print(f"Loaded {len(items)} from {txt_file}. Unique speakers are {len(unique_speakers)}. Filtered {filtered}")
+    print(random.choice(items))
+    return items
+
+def extract_audio_prefix_cv(filename):
+    if 'sent_' in filename:
+        pattern = r'^(.*?)(?=_sent)'
+    elif 'common_voice_en_' in filename:
+        pattern = r'^(.*?)\.mp3$'
+    elif '_UTT_' in filename:
+        pattern = r'^(.*?)(?=_UTT)'
+    elif 'chunk' in filename:
+        pattern = r'^(.*?)(?=_chunk)'
+    else:
+        pattern = r'^(.*?)(?:[_\.]\d+|\.original)?\.wav$'
+    
+    match = re.match(pattern, filename)
+    if match:
+        return match.group(1)
+    return None
+
+def modelslab_oss_commonvoice(root_path, meta_file, **kwargs):  # pylint: disable=unused-argument
+    """Normalizes the LJSpeech meta data file to TTS format
+    https://keithito.com/LJ-Speech-Dataset/"""
+    txt_file = os.path.join(root_path, meta_file)
+    items = []
+    speaker_name = "oss"
+    unique_speakers = set()
+    filtered = 0
+    count = 0
+    non_char_regex = r'[\u3040-\u30FF\u4E00-\u9FFF\uAC00-\uD7A3\u0370-\u03FF\u0600-\u06FF\u0750-\u077F\u0400-\u04FF]'
+    pattern = re.compile(non_char_regex)
+    print(f"Loading {txt_file}")
+    with open(txt_file, "r", encoding="utf-8") as ttf:
+        for line in ttf:
+            if count == 0:
+                count += 1
+                continue
+            if pattern.search(line):
+                filtered+=1
+                continue
+            cols = line.split("|")
+            base_name = cols[0]
+            wav_file = f"{root_path}/{base_name}"  # Use f-string for faster concatenation
+            print(f"cv debug, wav file {wav_file}")
+            wav_file = wav_file.replace(".mp3", ".wav")
+            speaker_id = extract_audio_prefix_cv(base_name)
+            try:
+                text = cols[2].strip()
+            except Exception as e:
+                continue
+            # Construct the speaker_name only once and reuse it
+            speaker_name_full=f"{speaker_name}_{speaker_id}"
+            unique_speakers.add(speaker_name_full)
+            items.append({
+                "text": text,
+                "audio_file": wav_file,
+                "speaker_name": speaker_name_full,
+                "root_path": root_path
+            })
+            count += 1
+    print(f"Loaded {len(items)} from {txt_file}. Unique speakers are {len(unique_speakers)}. Filtered {filtered}")
+    print(random.choice(items))
+    return items
+
+#Tetsing indic tab.
+def get_synthetic_speaker_name(filename):
+    match = re.match(r"(.*)_(\d+)$", filename)
+    if match:
+        return match.group(1)
+    return None
+    
+def modelslab_synthetic(root_path, meta_file, **kwargs):  # pylint: disable=unused-argument
+    """Normalizes the LJSpeech meta data file to TTS format
+    https://keithito.com/LJ-Speech-Dataset/"""
+    txt_file = os.path.join(root_path, meta_file)
+    items = []
+    speaker_name = "synthetic"
+    count = 0
+    unique_speakers = set()
+    filtered = 0
+    count = 0
+    non_char_regex = r'[\u3040-\u30FF\u4E00-\u9FFF\uAC00-\uD7A3\u0370-\u03FF\u0600-\u06FF\u0750-\u077F\u0400-\u04FF]'
+    pattern = re.compile(non_char_regex)
+    print(f"Loading {txt_file}")
+    with open(txt_file, "r", encoding="utf-8") as ttf:
+        for line in ttf:
+            #skip header
+            if count == 0:
+                count += 1
+                continue
+            if pattern.search(line):
+                filtered+=1
+                continue
+            if "v9" in meta_file or "v10" in meta_file:
+                cols = line.split("\t")
+            else:
+                cols = line.split("|")
+            base_name = cols[0]
+            wav_file = f"{root_path}/{base_name}.wav"  # Use f-string for faster concatenation
+            speaker_id = get_synthetic_speaker_name(base_name)
+            try:
+                text = cols[2].strip()
+            except Exception as e:
+                continue
+            # Construct the speaker_name only once and reuse it
+            speaker_name_full = f"{speaker_name}_{speaker_id}"
+            items.append({
+                "text": text,
+                "audio_file": wav_file,
+                "speaker_name": speaker_name_full,
+                "root_path": root_path
+            })
+            count += 1
+    print(f"Loaded {len(items)} from {txt_file}. Unique speakers are {len(unique_speakers)}. Filtered {filtered}")
+    print(random.choice(items))
+    return items
+
+def get_yt_speaker_name(filename):
+    match = re.match(r"(.*)_chunk_(.*)", filename)
+    
+    if match:
+        return match.group(1)
+    return None
+
+def modelslab_yt(root_path, meta_file, **kwargs):
+    txt_file = os.path.join(root_path, meta_file)
+    items = []
+    speaker_name = "yt"
+    count = 0
+    unique_speakers = set()
+    filtered = 0
+    count = 0
+    non_char_regex = r'[\u3040-\u30FF\u4E00-\u9FFF\uAC00-\uD7A3\u0370-\u03FF\u0600-\u06FF\u0750-\u077F\u0400-\u04FF]'
+    pattern = re.compile(non_char_regex)
+    print(f"Loading {txt_file}")
+    with open(txt_file, "r", encoding="utf-8") as ttf:
+        for line in ttf:
+            #skip header
+            if count == 0:
+                count += 1
+                continue
+            if pattern.search(line):
+                filtered+=1
+                continue
+            cols = line.split("|")
+            base_name = cols[0]
+            wav_file = f"{root_path}/{base_name}.wav"  # Use f-string for faster concatenation
+            speaker_id = get_yt_speaker_name(base_name)
+            text = cols[2].strip()
+            # Construct the speaker_name only once and reuse it
+            speaker_name_full = f"{speaker_name}_{speaker_id}"
+            items.append({
+                "text": text,
+                "audio_file": wav_file,
+                "speaker_name": speaker_name_full,
+                "root_path": root_path
+            })
+            count += 1
+    print(f"Loaded {len(items)} from {txt_file}. Unique speakers are {len(unique_speakers)}. Filtered {filtered}")
+    print(random.choice(items))
+    return items
+    
 def ljspeech_test(root_path, meta_file, **kwargs):  # pylint: disable=unused-argument
     """Normalizes the LJSpeech meta data file for TTS testing
     https://keithito.com/LJ-Speech-Dataset/"""

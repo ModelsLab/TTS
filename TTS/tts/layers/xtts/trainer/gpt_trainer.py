@@ -19,7 +19,7 @@ from TTS.tts.layers.xtts.trainer.dataset import XTTSDataset
 from TTS.tts.models.base_tts import BaseTTS
 from TTS.tts.models.xtts import Xtts, XttsArgs, XttsAudioConfig
 from TTS.utils.io import load_fsspec
-
+from TTS.utils.generic_utils import set_init_dict
 
 @dataclass
 class GPTTrainerConfig(XttsConfig):
@@ -46,6 +46,7 @@ class GPTArgs(XttsArgs):
     debug_loading_failures: bool = False
     max_wav_length: int = 255995  # ~11.6 seconds
     max_text_length: int = 200
+    
     tokenizer_file: str = ""
     mel_norm_file: str = "https://coqui.gateway.scarf.sh/v0.14.0_models/mel_norms.pth"
     dvae_checkpoint: str = ""
@@ -78,10 +79,10 @@ class GPTTrainer(BaseTTS):
         # create the tokenizer with the target vocabulary
         self.xtts.tokenizer = VoiceBpeTokenizer(self.args.tokenizer_file)
         # init gpt encoder and hifigan decoder
-        # self.xtts.init_models()
+        self.xtts.init_models()
 
         if self.args.xtts_checkpoint:
-            self.load_checkpoint(self.config, self.args.xtts_checkpoint, eval=False, strict=False)
+            self.load_checkpoint(self.config, self.args.xtts_checkpoint, eval=False, strict=False) #was false
 
         # set mel stats
         if self.args.mel_norm_file:
@@ -138,6 +139,8 @@ class GPTTrainer(BaseTTS):
                 gpt_checkpoint["text_head.bias"] = text_head_bias
 
             self.xtts.gpt.load_state_dict(gpt_checkpoint, strict=True)
+            for param in self.xtts.gpt.mel_head.parameters():
+                param.reqires_grad=False
             print(">> GPT weights restored from:", self.args.gpt_checkpoint)
 
         # Mel spectrogram extractor for conditioning
@@ -183,7 +186,7 @@ class GPTTrainer(BaseTTS):
         self.dvae.eval()
         if self.args.dvae_checkpoint:
             dvae_checkpoint = torch.load(self.args.dvae_checkpoint, map_location=torch.device("cpu"))
-            self.dvae.load_state_dict(dvae_checkpoint, strict=False)
+            self.dvae.load_state_dict(dvae_checkpoint, strict=False) #was false
             print(">> DVAE weights restored from:", self.args.dvae_checkpoint)
         else:
             raise RuntimeError(
@@ -475,7 +478,7 @@ class GPTTrainer(BaseTTS):
         config,
         checkpoint_path,
         eval=False,
-        strict=True,
+        strict=False,
         cache_storage="/tmp/tts_cache",
         target_protocol="s3",
         target_options={"anon": True},
@@ -485,8 +488,17 @@ class GPTTrainer(BaseTTS):
         state = self.xtts.get_compatible_checkpoint_state_dict(checkpoint_path)
 
         # load the model weights
-        self.xtts.load_state_dict(state, strict=strict)
-
+        try:
+            self.xtts.load_state_dict(state, strict=strict)
+        except RuntimeError as e:
+            print(e)
+            print(" > Partial model initialization.")
+            model_dict = self.state_dict()
+            model_dict = {key.replace('xtts.', ''): value for key, value in model_dict.items()}
+            model_dict = set_init_dict(model_dict, state, config)
+            self.xtts.load_state_dict(model_dict)
+            del model_dict
+            
         if eval:
             self.xtts.gpt.init_gpt_for_inference(kv_cache=self.args.kv_cache, use_deepspeed=False)
             self.eval()

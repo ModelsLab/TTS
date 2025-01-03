@@ -67,11 +67,18 @@ class XTTSDataset(torch.utils.data.Dataset):
         self.samples = samples
         if not is_eval:
             random.seed(config.training_seed)
-            # random.shuffle(self.samples)
             random.shuffle(self.samples)
             # order by language
             self.samples = key_samples_by_col(self.samples, "language")
             print(" > Sampling by language:", self.samples.keys())
+            
+            self.speaker_indexes = {lang: {} for lang in self.samples.keys()}
+            for lang, lang_samples in self.samples.items():
+                for index, sample in enumerate(lang_samples):
+                    speaker_name = sample["speaker_name"]
+                    if speaker_name not in self.speaker_indexes[lang]:
+                        self.speaker_indexes[lang][speaker_name] = []
+                    self.speaker_indexes[lang][speaker_name].append(index)
         else:
             # for evaluation load and check samples that are corrupted to ensures the reproducibility
             self.check_eval_samples()
@@ -81,7 +88,7 @@ class XTTSDataset(torch.utils.data.Dataset):
         new_samples = []
         for sample in self.samples:
             try:
-                tseq, _, wav, _, _, _ = self.load_item(sample)
+                tseq, _, wav, _, _, _ = self.load_item(sample, cond_sample=sample)
             except:
                 continue
             # Basically, this audio file is nonexistent or too long to be supported by the dataset.
@@ -103,7 +110,7 @@ class XTTSDataset(torch.utils.data.Dataset):
         assert not torch.any(tokens == 0), f"Stop token found in {text}"
         return tokens
 
-    def load_item(self, sample):
+    def load_item(self, sample, cond_sample):
         text = str(sample["text"])
         tseq = self.get_text(text, sample["language"])
         audiopath = sample["audio_file"]
@@ -127,9 +134,16 @@ class XTTSDataset(torch.utils.data.Dataset):
                 if "reference_path" in sample and sample["reference_path"] is not None
                 else audiopath
             )
-            cond, cond_len, _ = get_prompt_slice(
+            cond1, cond_len1, _ = get_prompt_slice(
                 ref_sample, self.max_conditioning_length, self.min_conditioning_length, self.sample_rate, self.is_eval
             )
+            cond2, cond_len2, _ = get_prompt_slice(
+                cond_sample["audio_file"], self.max_conditioning_length, self.min_conditioning_length, self.sample_rate, self.is_eval
+            )
+            cond = torch.stack([cond1,cond2])
+            # cond = torch.stack([cond1,cond2], dim=0)
+            # cond_len = torch.stack([torch.tensor(cond_len1, dtype=torch.long),torch.tensor(cond_len2, dtype=torch.long)])
+            cond_len = torch.tensor( ((cond_len1 + cond_len2) // 2), dtype=torch.long)
             # if do not use masking use cond_len
             cond_idxs = torch.nan
 
@@ -157,7 +171,14 @@ class XTTSDataset(torch.utils.data.Dataset):
 
         # try to load the sample, if fails added it to the failed samples list
         try:
-            tseq, audiopath, wav, cond, cond_len, cond_idxs = self.load_item(sample)
+            #if not eval
+            if not self.is_eval:
+                speaker_name = random.choice(list(self.speaker_indexes[lang].keys()))
+                index = random.choice(self.speaker_indexes[lang][speaker_name])
+                cond_sample = self.samples[lang][index]
+            else:
+                cond_sample = sample
+            tseq, audiopath, wav, cond, cond_len, cond_idxs = self.load_item(sample, cond_sample)
         except:
             if self.debug_failures:
                 print(f"error loading {sample['audio_file']} {sys.exc_info()}")
@@ -186,8 +207,8 @@ class XTTSDataset(torch.utils.data.Dataset):
             "wav": wav,
             "wav_lengths": torch.tensor(wav.shape[-1], dtype=torch.long),
             "filenames": audiopath,
-            "conditioning": cond.unsqueeze(1),
-            "cond_lens": torch.tensor(cond_len, dtype=torch.long)
+            "conditioning": cond,
+            "cond_lens": cond_len
             if cond_len is not torch.nan
             else torch.tensor([cond_len]),
             "cond_idxs": torch.tensor(cond_idxs) if cond_idxs is not torch.nan else torch.tensor([cond_idxs]),
